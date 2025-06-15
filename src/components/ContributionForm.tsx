@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Smartphone, CreditCard, Send } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 const ContributionForm = () => {
   const [formData, setFormData] = useState({
@@ -33,20 +33,18 @@ const ContributionForm = () => {
     setIsLoading(true);
 
     try {
-      // Simulate API call to process mobile money payment
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Store contribution locally (in real app, this would go to backend)
-      const contribution = {
-        id: Date.now().toString(),
-        ...formData,
-        timestamp: new Date().toISOString(),
-        status: 'pending'
+      // Store contribution in Supabase
+      const payload = {
+        contributor_name: formData.contributorName,
+        amount: parseInt(formData.amount, 10),
+        phone_number: formData.phoneNumber,
+        payment_method: formData.paymentMethod,
+        purpose: formData.purpose,
+        // status, timestamp handled by defaults
       };
-      
-      const existingContributions = JSON.parse(localStorage.getItem('contributions') || '[]');
-      existingContributions.push(contribution);
-      localStorage.setItem('contributions', JSON.stringify(existingContributions));
+      const { error } = await supabase.from('contributions').insert([payload]);
+
+      if (error) throw error;
 
       toast({
         title: "Payment Initiated",
@@ -92,7 +90,6 @@ const ContributionForm = () => {
               required
             />
           </div>
-
           <div className="space-y-2">
             <Label htmlFor="amount">Amount (TZS)</Label>
             <Input
@@ -105,7 +102,6 @@ const ContributionForm = () => {
               required
             />
           </div>
-
           <div className="space-y-2">
             <Label htmlFor="paymentMethod">Mobile Money Provider</Label>
             <Select value={formData.paymentMethod} onValueChange={(value) => setFormData({...formData, paymentMethod: value})}>
@@ -124,7 +120,6 @@ const ContributionForm = () => {
               </SelectContent>
             </Select>
           </div>
-
           <div className="space-y-2">
             <Label htmlFor="phoneNumber">Phone Number</Label>
             <Input
@@ -137,7 +132,6 @@ const ContributionForm = () => {
               required
             />
           </div>
-
           <div className="space-y-2">
             <Label htmlFor="purpose">Purpose (Optional)</Label>
             <Textarea
@@ -148,7 +142,6 @@ const ContributionForm = () => {
               rows={2}
             />
           </div>
-
           <Button 
             type="submit" 
             className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
@@ -163,7 +156,6 @@ const ContributionForm = () => {
               </>
             )}
           </Button>
-
           <div className="text-xs text-gray-500 text-center space-y-1">
             <p>🔒 Secure mobile money transaction</p>
             <p>You will receive a payment prompt on your phone</p>

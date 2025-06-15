@@ -4,16 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Search, Clock, CheckCircle, XCircle, Smartphone } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Contribution {
   id: string;
-  contributorName: string;
-  amount: string;
-  phoneNumber: string;
-  paymentMethod: string;
-  purpose: string;
-  timestamp: string;
-  status: 'pending' | 'completed' | 'failed';
+  contributor_name: string;
+  amount: number;
+  phone_number: string;
+  payment_method: string;
+  purpose: string | null;
+  timestamp: string | null;
+  status: string;
 }
 
 const ContributionList = () => {
@@ -22,39 +23,49 @@ const ContributionList = () => {
   const [filteredContributions, setFilteredContributions] = useState<Contribution[]>([]);
 
   useEffect(() => {
-    // Load contributions from localStorage
-    const stored = localStorage.getItem('contributions');
-    if (stored) {
-      const parsedContributions = JSON.parse(stored);
-      setContributions(parsedContributions);
-      setFilteredContributions(parsedContributions);
-    }
+    // Fetch contributions from Supabase
+    const fetchContributions = async () => {
+      const { data, error } = await supabase
+        .from('contributions')
+        .select('*')
+        .order('timestamp', { ascending: false });
+      if (!error && data) {
+        setContributions(data as Contribution[]);
+        setFilteredContributions(data as Contribution[]);
+      } else {
+        setContributions([]);
+        setFilteredContributions([]);
+      }
+    };
+    fetchContributions();
   }, []);
 
   useEffect(() => {
-    // Filter contributions based on search term
+    // Filter contributions based on search term (by name or purpose)
     const filtered = contributions.filter(contribution =>
-      contribution.contributorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      contribution.purpose.toLowerCase().includes(searchTerm.toLowerCase())
+      (contribution.contributor_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (contribution.purpose || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredContributions(filtered);
   }, [searchTerm, contributions]);
 
-  const formatTSH = (amount: string) => {
+  const formatTSH = (amount: number) => {
     return new Intl.NumberFormat('sw-TZ', {
       style: 'currency',
       currency: 'TZS',
       minimumFractionDigits: 0
-    }).format(parseInt(amount));
+    }).format(amount || 0);
   };
 
-  const formatDate = (timestamp: string) => {
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const formatDate = (timestamp: string | null) => {
+    return timestamp
+      ? new Date(timestamp).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      : '';
   };
 
   const getStatusIcon = (status: string) => {
@@ -74,7 +85,7 @@ const ContributionList = () => {
       failed: 'bg-red-100 text-red-800',
       pending: 'bg-yellow-100 text-yellow-800'
     };
-    
+
     return (
       <Badge className={variants[status as keyof typeof variants]}>
         {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -115,15 +126,15 @@ const ContributionList = () => {
                   <div className="flex items-start justify-between">
                     <div className="flex-1 space-y-1">
                       <div className="flex items-center space-x-2">
-                        <span className="font-semibold text-sm">{contribution.contributorName}</span>
+                        <span className="font-semibold text-sm">{contribution.contributor_name}</span>
                         {getStatusIcon(contribution.status)}
                       </div>
                       <div className="text-lg font-bold text-green-600">
                         {formatTSH(contribution.amount)}
                       </div>
                       <div className="flex items-center space-x-2 text-xs text-gray-500">
-                        {getMobileMoneyIcon(contribution.paymentMethod)}
-                        <span>{contribution.phoneNumber}</span>
+                        {getMobileMoneyIcon(contribution.payment_method)}
+                        <span>{contribution.phone_number}</span>
                         <span>•</span>
                         <span>{formatDate(contribution.timestamp)}</span>
                       </div>

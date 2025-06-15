@@ -1,22 +1,31 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Download, Calendar, TrendingUp, Users } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 const ReportsSection = () => {
-  const [contributions, setContributions] = useState([]);
+  const [contributions, setContributions] = useState<any[]>([]);
   const [reportPeriod, setReportPeriod] = useState('this-month');
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    const stored = localStorage.getItem('contributions');
-    if (stored) {
-      setContributions(JSON.parse(stored));
-    }
+    // Load contributions from Supabase
+    const fetchContributions = async () => {
+      const { data, error } = await supabase
+        .from('contributions')
+        .select('*')
+        .order('timestamp', { ascending: false });
+      if (!error && data) {
+        setContributions(data);
+      } else {
+        setContributions([]);
+      }
+    };
+    fetchContributions();
   }, []);
 
   const generatePDFReport = async () => {
@@ -76,8 +85,8 @@ const ReportsSection = () => {
       });
     }
 
-    const totalAmount = filteredContributions.reduce((sum, c) => sum + parseInt(c.amount), 0);
-    const totalContributors = new Set(filteredContributions.map(c => c.contributorName)).size;
+    const totalAmount = filteredContributions.reduce((sum, c) => sum + (parseInt(c.amount) || 0), 0);
+    const totalContributors = new Set(filteredContributions.map(c => c.contributor_name)).size;
     const avgContribution = filteredContributions.length > 0 ? totalAmount / filteredContributions.length : 0;
 
     return {
@@ -117,10 +126,10 @@ DETAILED TRANSACTIONS
 
     data.contributions.forEach((contrib: any, index: number) => {
       content += `
-${index + 1}. ${contrib.contributorName}
+${index + 1}. ${contrib.contributor_name}
    Amount: ${formatTSH(parseInt(contrib.amount))}
-   Phone: ${contrib.phoneNumber}
-   Date: ${new Date(contrib.timestamp).toLocaleString()}
+   Phone: ${contrib.phone_number}
+   Date: ${contrib.timestamp ? new Date(contrib.timestamp).toLocaleString() : ""}
    Purpose: ${contrib.purpose || 'General contribution'}
    Status: ${contrib.status.toUpperCase()}
    `;
