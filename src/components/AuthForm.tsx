@@ -92,8 +92,8 @@ const AuthForm = () => {
         description: isLogin ? "Karibu tena kwenye Mchango" : "Akaunti yako imetengenezwa kikamilifu",
       });
 
-      // Here you would typically handle the authentication
-      console.log('Auth data:', formData);
+      // Redirect to dashboard
+      window.location.href = '/dashboard';
       
     } catch (error) {
       toast({
