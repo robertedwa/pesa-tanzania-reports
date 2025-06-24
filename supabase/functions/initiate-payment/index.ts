@@ -160,6 +160,8 @@ async function initiateMpesaPayment(amount: number, phoneNumber: string, contrib
 async function initiateAirtelPayment(amount: number, phoneNumber: string, contributionId: string) {
   const apiKey = Deno.env.get('AIRTEL_MONEY_API_KEY');
   const apiSecret = Deno.env.get('AIRTEL_MONEY_API_SECRET');
+  const xKey = Deno.env.get('AIRTEL_X_KEY');
+  const xSignature = Deno.env.get('AIRTEL_X_SIGNATURE');
   
   if (!apiKey || !apiSecret) {
     throw new Error('Airtel Money credentials not configured');
@@ -181,29 +183,44 @@ async function initiateAirtelPayment(amount: number, phoneNumber: string, contri
   const authData = await authResponse.json();
   const accessToken = authData.access_token;
 
-  // Initiate payment request
-  const paymentResponse = await fetch('https://openapiuat.airtel.africa/merchant/v1/payments/', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      'X-Country': 'TZ',
-      'X-Currency': 'TZS'
+  // Prepare payment request body
+  const paymentBody = {
+    reference: contributionId,
+    subscriber: {
+      country: 'TZ',
+      currency: 'TZS',
+      msisdn: phoneNumber
     },
-    body: JSON.stringify({
-      reference: contributionId,
-      subscriber: {
-        country: 'TZ',
-        currency: 'TZS',
-        msisdn: phoneNumber
-      },
-      transaction: {
-        amount: amount,
-        country: 'TZ',
-        currency: 'TZS',
-        id: contributionId
-      }
-    })
+    transaction: {
+      amount: amount,
+      country: 'TZ',
+      currency: 'TZS',
+      id: contributionId
+    }
+  };
+
+  // Prepare headers with proper format
+  const headers: Record<string, string> = {
+    'Accept': '*/*',
+    'Content-Type': 'application/json',
+    'X-Country': 'TZ',
+    'X-Currency': 'TZS',
+    'Authorization': `Bearer ${accessToken}`
+  };
+
+  // Add x-signature and x-key if provided
+  if (xSignature) {
+    headers['x-signature'] = xSignature;
+  }
+  if (xKey) {
+    headers['x-key'] = xKey;
+  }
+
+  // Initiate payment request using v2 API
+  const paymentResponse = await fetch('https://openapiuat.airtel.africa/merchant/v2/payments/', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(paymentBody)
   });
 
   const paymentData = await paymentResponse.json();
