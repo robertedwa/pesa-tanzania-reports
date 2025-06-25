@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +36,8 @@ const ContributionForm = () => {
     setPaymentStatus('processing');
 
     try {
+      console.log('Submitting payment request:', formData);
+
       // Call the initiate-payment API
       const { data, error } = await supabase.functions.invoke('initiate-payment', {
         body: {
@@ -44,23 +45,28 @@ const ContributionForm = () => {
           phoneNumber: formData.phoneNumber,
           paymentMethod: formData.paymentMethod,
           contributorName: formData.contributorName,
-          purpose: formData.purpose
+          purpose: formData.purpose || null
         }
       });
 
-      if (error) throw error;
+      console.log('Payment response:', data, error);
 
-      if (data.success) {
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw new Error(error.message || 'Failed to initiate payment');
+      }
+
+      if (data && data.success) {
         setContributionId(data.contributionId);
         toast({
           title: "Payment Request Sent",
-          description: data.message,
+          description: data.message || "Payment request sent to your phone",
         });
 
         // Start polling for payment status
         startPaymentStatusPolling(data.contributionId);
       } else {
-        throw new Error(data.error);
+        throw new Error(data?.error || 'Payment initiation failed');
       }
 
     } catch (error: any) {
@@ -77,15 +83,26 @@ const ContributionForm = () => {
   };
 
   const startPaymentStatusPolling = (id: string) => {
+    let pollCount = 0;
+    const maxPolls = 100; // 5 minutes with 3-second intervals
+    
     const pollInterval = setInterval(async () => {
       try {
+        pollCount++;
+        console.log(`Polling payment status (attempt ${pollCount})...`);
+
         const { data, error } = await supabase.functions.invoke('check-payment-status', {
           body: { id }
         });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Status check error:', error);
+          return;
+        }
 
-        if (data.status === 'completed') {
+        console.log('Payment status:', data);
+
+        if (data && data.status === 'completed') {
           setPaymentStatus('completed');
           clearInterval(pollInterval);
           toast({
@@ -108,7 +125,7 @@ const ContributionForm = () => {
             setContributionId(null);
           }, 3000);
           
-        } else if (data.status === 'failed') {
+        } else if (data && data.status === 'failed') {
           setPaymentStatus('failed');
           clearInterval(pollInterval);
           toast({
@@ -117,23 +134,23 @@ const ContributionForm = () => {
             variant: "destructive"
           });
         }
+
+        // Stop polling after max attempts
+        if (pollCount >= maxPolls) {
+          clearInterval(pollInterval);
+          if (paymentStatus === 'processing') {
+            setPaymentStatus('failed');
+            toast({
+              title: "Payment Timeout",
+              description: "Payment verification timed out. Please check your transaction status manually.",
+              variant: "destructive"
+            });
+          }
+        }
       } catch (error) {
         console.error('Error checking payment status:', error);
       }
     }, 3000); // Check every 3 seconds
-
-    // Stop polling after 5 minutes
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      if (paymentStatus === 'processing') {
-        setPaymentStatus('failed');
-        toast({
-          title: "Payment Timeout",
-          description: "Payment verification timed out. Please check your transaction status.",
-          variant: "destructive"
-        });
-      }
-    }, 300000); // 5 minutes
   };
 
   const getStatusIcon = () => {

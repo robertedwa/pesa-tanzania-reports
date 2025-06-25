@@ -17,62 +17,65 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  if (req.method === 'GET') {
-    try {
+  try {
+    let contributionId: string | null = null;
+
+    // Handle both GET and POST requests
+    if (req.method === 'GET') {
       const url = new URL(req.url);
-      const contributionId = url.searchParams.get('id');
+      contributionId = url.searchParams.get('id');
+    } else if (req.method === 'POST') {
+      const body = await req.json();
+      contributionId = body.id || body.contributionId;
+    }
 
-      if (!contributionId) {
-        return new Response(
-          JSON.stringify({ error: 'Contribution ID is required' }),
-          { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-        );
-      }
-
-      const { data: contribution, error } = await supabase
-        .from('contributions')
-        .select('*')
-        .eq('id', contributionId)
-        .single();
-
-      if (error) {
-        console.error('Error fetching contribution:', error);
-        return new Response(
-          JSON.stringify({ error: 'Contribution not found' }),
-          { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-        );
-      }
-
+    if (!contributionId) {
       return new Response(
-        JSON.stringify({
-          id: contribution.id,
-          status: contribution.status,
-          amount: contribution.amount,
-          contributor_name: contribution.contributor_name,
-          timestamp: contribution.timestamp
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...corsHeaders,
-          },
-        }
-      );
-
-    } catch (error: any) {
-      console.error('Error checking payment status:', error);
-      return new Response(
-        JSON.stringify({ error: 'Internal server error' }),
-        { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        JSON.stringify({ error: 'Contribution ID is required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
       );
     }
-  }
 
-  return new Response(
-    JSON.stringify({ error: 'Method not allowed' }),
-    { status: 405, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-  );
+    console.log('Checking payment status for contribution:', contributionId);
+
+    const { data: contribution, error } = await supabase
+      .from('contributions')
+      .select('*')
+      .eq('id', contributionId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching contribution:', error);
+      return new Response(
+        JSON.stringify({ error: 'Contribution not found' }),
+        { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        id: contribution.id,
+        status: contribution.status,
+        amount: contribution.amount,
+        contributor_name: contribution.contributor_name,
+        timestamp: contribution.timestamp
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders,
+        },
+      }
+    );
+
+  } catch (error: any) {
+    console.error('Error checking payment status:', error);
+    return new Response(
+      JSON.stringify({ error: 'Internal server error' }),
+      { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+    );
+  }
 };
 
 serve(handler);
