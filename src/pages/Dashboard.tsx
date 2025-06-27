@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ContributionForm from '@/components/ContributionForm';
 import ContributionList from '@/components/ContributionList';
 import ReportsSection from '@/components/ReportsSection';
+import MobileMoneyAPI from '@/components/MobileMoneyAPI';
 import { Button } from "@/components/ui/button";
 import { LogOut, Smartphone } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -51,7 +52,8 @@ const Dashboard = () => {
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="space-y-6">
-          {/* Dashboard Stats REMOVED */}
+          {/* Mobile Money API Status */}
+          <MobileMoneyAPI />
 
           {/* Main Tabs */}
           <Tabs defaultValue="contribute" className="w-full">
@@ -90,4 +92,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
