@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Smartphone, CreditCard, Send, CheckCircle, Clock } from "lucide-react";
+import { Smartphone, CreditCard, Send, CheckCircle, Clock, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const ContributionForm = () => {
@@ -18,8 +18,9 @@ const ContributionForm = () => {
     purpose: ''
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'completed' | 'failed'>('idle');
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'completed' | 'failed' | 'timeout'>('idle');
   const [contributionId, setContributionId] = useState<string | null>(null);
+  const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
   const mobileMoneyProviders = [
@@ -30,10 +31,18 @@ const ContributionForm = () => {
     { id: 'ttcl', name: 'TTCL Pesa', code: '+255' }
   ];
 
+  const clearPolling = () => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      setPollInterval(null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setPaymentStatus('processing');
+    clearPolling(); // Clear any existing polling
 
     try {
       console.log('Submitting payment request:', formData);
@@ -58,9 +67,14 @@ const ContributionForm = () => {
 
       if (data && data.success) {
         setContributionId(data.contributionId);
+        
+        const isTestMode = data.paymentReference?.includes('TEST_');
+        
         toast({
-          title: "Payment Request Sent",
-          description: data.message || "Payment request sent to your phone",
+          title: isTestMode ? "Test Payment Request Sent" : "Payment Request Sent",
+          description: isTestMode 
+            ? "Test mode: Payment will auto-complete in a few seconds" 
+            : `Payment request sent to ${data.phoneNumber}. Check your phone for the payment prompt.`,
         });
 
         // Start polling for payment status
@@ -84,9 +98,9 @@ const ContributionForm = () => {
 
   const startPaymentStatusPolling = (id: string) => {
     let pollCount = 0;
-    const maxPolls = 100; // 5 minutes with 3-second intervals
+    const maxPolls = 60; // 3 minutes with 3-second intervals
     
-    const pollInterval = setInterval(async () => {
+    const interval = setInterval(async () => {
       try {
         pollCount++;
         console.log(`Polling payment status (attempt ${pollCount})...`);
@@ -104,7 +118,7 @@ const ContributionForm = () => {
 
         if (data && data.status === 'completed') {
           setPaymentStatus('completed');
-          clearInterval(pollInterval);
+          clearPolling();
           toast({
             title: "Payment Completed",
             description: "Your contribution has been successfully processed!",
@@ -127,7 +141,7 @@ const ContributionForm = () => {
           
         } else if (data && data.status === 'failed') {
           setPaymentStatus('failed');
-          clearInterval(pollInterval);
+          clearPolling();
           toast({
             title: "Payment Failed",
             description: "The payment was not completed. Please try again.",
@@ -137,12 +151,12 @@ const ContributionForm = () => {
 
         // Stop polling after max attempts
         if (pollCount >= maxPolls) {
-          clearInterval(pollInterval);
+          clearPolling();
           if (paymentStatus === 'processing') {
-            setPaymentStatus('failed');
+            setPaymentStatus('timeout');
             toast({
               title: "Payment Timeout",
-              description: "Payment verification timed out. Please check your transaction status manually.",
+              description: "Payment verification timed out. Please check your transaction manually or try again.",
               variant: "destructive"
             });
           }
@@ -151,6 +165,14 @@ const ContributionForm = () => {
         console.error('Error checking payment status:', error);
       }
     }, 3000); // Check every 3 seconds
+    
+    setPollInterval(interval);
+  };
+
+  const retryPayment = () => {
+    setPaymentStatus('idle');
+    setContributionId(null);
+    clearPolling();
   };
 
   const getStatusIcon = () => {
@@ -160,7 +182,8 @@ const ContributionForm = () => {
       case 'completed':
         return <CheckCircle className="w-5 h-5 text-green-500" />;
       case 'failed':
-        return <CreditCard className="w-5 h-5 text-red-500" />;
+      case 'timeout':
+        return <AlertTriangle className="w-5 h-5 text-red-500" />;
       default:
         return <CreditCard className="w-5 h-5 text-green-600" />;
     }
@@ -169,11 +192,13 @@ const ContributionForm = () => {
   const getStatusMessage = () => {
     switch (paymentStatus) {
       case 'processing':
-        return "Waiting for payment confirmation on your phone...";
+        return "Waiting for payment confirmation...";
       case 'completed':
         return "Payment completed successfully!";
       case 'failed':
         return "Payment failed. Please try again.";
+      case 'timeout':
+        return "Payment timed out. Please retry.";
       default:
         return "Make Contribution";
     }
@@ -245,8 +270,7 @@ const ContributionForm = () => {
               type="tel"
               value={formData.phoneNumber}
               onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}
-              placeholder="e.g., 0755123456"
-              pattern="[0-9]{10}"
+              placeholder="e.g., 0755123456 or 255755123456"
               required
               disabled={isLoading || paymentStatus === 'processing'}
             />
@@ -264,37 +288,74 @@ const ContributionForm = () => {
             />
           </div>
           
-          <Button 
-            type="submit" 
-            className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
-            disabled={isLoading || paymentStatus === 'processing' || paymentStatus === 'completed'}
-          >
-            {isLoading ? (
-              <>Processing...</>
-            ) : paymentStatus === 'processing' ? (
-              <>
+          {(paymentStatus === 'idle' || paymentStatus === 'failed' || paymentStatus === 'timeout') && (
+            <Button 
+              type="submit" 
+              className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>Processing...</>
+              ) : paymentStatus === 'failed' || paymentStatus === 'timeout' ? (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Retry Payment
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Send Payment Request
+                </>
+              )}
+            </Button>
+          )}
+
+          {paymentStatus === 'processing' && (
+            <div className="space-y-2">
+              <Button 
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled
+              >
                 <Clock className="w-4 h-4 mr-2 animate-spin" />
                 Waiting for Confirmation
-              </>
-            ) : paymentStatus === 'completed' ? (
-              <>
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Payment Completed
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4 mr-2" />
-                Send Payment Request
-              </>
-            )}
-          </Button>
+              </Button>
+              <Button 
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full text-sm"
+                onClick={retryPayment}
+              >
+                Cancel & Retry
+              </Button>
+            </div>
+          )}
+
+          {paymentStatus === 'completed' && (
+            <Button 
+              type="button"
+              className="w-full bg-green-600 hover:bg-green-700"
+              disabled
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Payment Completed
+            </Button>
+          )}
           
           <div className="text-xs text-gray-500 text-center space-y-1">
             <p>🔒 Secure mobile money transaction</p>
-            <p>You will receive a payment prompt on your phone</p>
-            {paymentStatus === 'processing' && (
+            {paymentStatus === 'processing' ? (
               <p className="text-yellow-600 font-medium">
                 ⏳ Check your phone for the payment request
+              </p>
+            ) : (
+              <p>You will receive a payment prompt on your phone</p>
+            )}
+            {(paymentStatus === 'failed' || paymentStatus === 'timeout') && (
+              <p className="text-red-600 font-medium">
+                ❌ Payment failed. Please check your phone number and try again.
               </p>
             )}
           </div>
