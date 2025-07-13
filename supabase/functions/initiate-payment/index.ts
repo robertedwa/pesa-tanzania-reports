@@ -295,7 +295,8 @@ async function initiateAirtelPayment(amount: number, phoneNumber: string, contri
     const authResponse = await fetch('https://openapiuat.airtel.africa/auth/oauth2/token', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify(authPayload)
     });
