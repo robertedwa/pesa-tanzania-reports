@@ -296,7 +296,7 @@ async function initiateAirtelPayment(amount: number, phoneNumber: string, contri
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Accept': '*/*'
       },
       body: JSON.stringify(authPayload)
     });
