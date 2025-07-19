@@ -26,6 +26,7 @@ const ContributionForm = () => {
   const mobileMoneyProviders = [
     { id: 'mpesa', name: 'M-Pesa (Vodacom)', code: '+255' },
     { id: 'airtel', name: 'Airtel Money', code: '+255' },
+    { id: 'selcom', name: 'Selcom Pesa', code: '+255' },
     { id: 'tigopesa', name: 'Tigo Pesa', code: '+255' },
     { id: 'halopesa', name: 'Halo Pesa', code: '+255' },
     { id: 'ttcl', name: 'TTCL Pesa', code: '+255' }

@@ -78,6 +78,8 @@ const handler = async (req: Request): Promise<Response> => {
         paymentResponse = await initiateMpesaPayment(amount, formattedPhone, contribution.id);
       } else if (paymentMethod === 'airtel') {
         paymentResponse = await initiateAirtelPayment(amount, formattedPhone, contribution.id);
+      } else if (paymentMethod === 'selcom') {
+        paymentResponse = await initiateSelcomPayment(amount, formattedPhone, contribution.id);
       } else {
         throw new Error(`Unsupported payment method: ${paymentMethod}`);
       }
@@ -368,6 +370,116 @@ async function initiateAirtelPayment(amount: number, phoneNumber: string, contri
     };
   } catch (error: any) {
     console.error('Airtel payment error:', error);
+    throw error;
+  }
+}
+
+async function initiateSelcomPayment(amount: number, phoneNumber: string, contributionId: string) {
+  const apiKey = Deno.env.get('SELCOM_API_KEY');
+  const apiSecret = Deno.env.get('SELCOM_API_SECRET');
+  const vendorId = Deno.env.get('SELCOM_VENDOR_ID');
+  
+  console.log('Selcom credentials check:', { 
+    hasApiKey: !!apiKey, 
+    hasApiSecret: !!apiSecret,
+    hasVendorId: !!vendorId
+  });
+
+  if (!apiKey || !apiSecret || !vendorId) {
+    console.log('Selcom credentials not found, simulating payment request');
+    
+    // For testing: simulate a delay and then update status
+    setTimeout(async () => {
+      try {
+        await supabase
+          .from('contributions')
+          .update({ status: 'completed' })
+          .eq('id', contributionId);
+        console.log('Test payment completed for contribution:', contributionId);
+      } catch (error) {
+        console.error('Error updating test payment:', error);
+      }
+    }, 6000); // Complete after 6 seconds for testing
+
+    return {
+      reference: `TEST_SELCOM_${contributionId}`,
+      provider: 'selcom',
+      testMode: true
+    };
+  }
+
+  try {
+    console.log('Initiating real Selcom Pesa payment...');
+    
+    // Create payment request
+    const paymentPayload = {
+      vendor: vendorId,
+      order_id: contributionId,
+      buyer_email: 'customer@example.com',
+      buyer_name: 'Customer',
+      buyer_phone: phoneNumber,
+      amount: amount,
+      currency: 'TZS',
+      no_redirection: '1',
+      payment_methods: 'MASTERCARD,VISA,AMEX,TIGOPESA,AIRTELMONEY,MPESA,HALOPESA,AZAMPESA,ZPESA,TTCL,UHURUMOBILE',
+      cancel_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/selcom-callback`,
+      return_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/selcom-callback`,
+      webhook_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/selcom-callback`
+    };
+
+    console.log('Selcom payment payload:', JSON.stringify(paymentPayload, null, 2));
+
+    // Create signature for authentication
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signingFields = [
+      paymentPayload.vendor,
+      paymentPayload.order_id,
+      paymentPayload.buyer_email,
+      paymentPayload.buyer_name,
+      paymentPayload.buyer_phone,
+      paymentPayload.amount.toString(),
+      paymentPayload.currency,
+      apiSecret
+    ];
+    
+    const encoder = new TextEncoder();
+    const data = encoder.encode(signingFields.join(''));
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const digest = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const headers = {
+      'Authorization': `SELCOM ${apiKey}`,
+      'Digest-Method': 'HS256',
+      'Digest': digest,
+      'Timestamp': timestamp.toString(),
+      'Content-Type': 'application/json'
+    };
+
+    console.log('Selcom request headers:', Object.keys(headers));
+
+    // Initiate payment request
+    const paymentResponse = await fetch('https://apigw.selcommobile.com/v1/checkout', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(paymentPayload)
+    });
+
+    const paymentData = await paymentResponse.json();
+    console.log('Selcom payment response:', JSON.stringify(paymentData, null, 2));
+
+    if (!paymentResponse.ok) {
+      throw new Error(`Selcom payment failed: ${paymentData.message || paymentResponse.statusText}`);
+    }
+
+    return {
+      reference: paymentData.order_id || `SELCOM_${contributionId}`,
+      provider: 'selcom',
+      payment_url: paymentData.payment_url,
+      status: paymentData.result
+    };
+  } catch (error: any) {
+    console.error('Selcom payment error:', error);
     throw error;
   }
 }
